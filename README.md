@@ -76,7 +76,7 @@ PORT       STATE      SERVICE         BANNER
 
 1.  **Clone the repository:**
     ```sh
-    git clone [https://github.com/YourUsername/PortDog.git](https://github.com/YourUsername/PortDog.git)
+    git clone [https://github.com/nibbabob/PortDog.git](https://github.com/nibbabob/PortDog.git)
     cd PortDog
     ```
 
