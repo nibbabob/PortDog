@@ -1,10 +1,7 @@
-# .github/workflows/release.yml
-
 name: Rust CI & Release
 
 on:
   push:
-    # Run on pushes to the main branch and on version tags (e.g., v1.0, v1.2.3).
     branches: [ "main" ]
     tags: [ "v*.*.*" ]
   pull_request:
@@ -12,11 +9,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Set the binary name for easy re-use
+  # We still define the binary name here for use inside the job steps.
   BINARY_NAME: portdog
 
 jobs:
-  # This job is for Continuous Integration: build and test on all platforms.
+  # This CI job remains unchanged and is good practice.
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -37,31 +34,30 @@ jobs:
   # This job handles the entire release process.
   release:
     name: Build & Release
-    # Only run this job if a version tag was pushed.
     if: startsWith(github.ref, 'refs/tags/v')
-    # This job needs the 'test' job to succeed first.
     needs: test
-    # Use a matrix to build for all three target platforms.
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            archive_name: ${{ env.BINARY_NAME }}-${{ github.ref_name }}-linux-x86_64.tar.gz
-            asset_name: ${{ env.BINARY_NAME }}
+            # --- FIX: Hardcode 'portdog' instead of using env context ---
+            archive_name: portdog-${{ github.ref_name }}-linux-x86_64.tar.gz
+            asset_name: portdog
 
           - os: macos-latest
             target: x86_64-apple-darwin
-            archive_name: ${{ env.BINARY_NAME }}-${{ github.ref_name }}-macos-x86_64.tar.gz
-            asset_name: ${{ env.BINARY_NAME }}
+            # --- FIX: Hardcode 'portdog' instead of using env context ---
+            archive_name: portdog-${{ github.ref_name }}-macos-x86_64.tar.gz
+            asset_name: portdog
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            archive_name: ${{ env.BINARY_NAME }}-${{ github.ref_name }}-windows-x86_64.zip
-            asset_name: ${{ env.BINARY_NAME }}.exe
+            # --- FIX: Hardcode 'portdog' instead of using env context ---
+            archive_name: portdog-${{ github.ref_name }}-windows-x86_64.zip
+            asset_name: portdog.exe
 
-    # Grant permissions to the job to create a release.
     permissions:
       contents: write
 
@@ -81,28 +77,23 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }} --verbose
 
-      - name: Prepare release archive
-        # Use shell scripting to package the binary into a compressed archive.
+      - name: Prepare release archive (Windows)
+        if: matrix.os == 'windows-latest'
+        # Use PowerShell's native compression tool for better reliability.
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.asset_name }}" -DestinationPath "${{ matrix.archive_name }}"
+          echo "ASSET_PATH=${{ matrix.archive_name }}" >> $env:GITHUB_ENV
+
+      - name: Prepare release archive (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          # On Windows, the output path uses backslashes
-          BINARY_PATH="target/${{ matrix.target }}/release/${{ matrix.asset_name }}"
-
-          # Create the archive
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            7z a "${{ matrix.archive_name }}" "$BINARY_PATH"
-          else
-            tar -czvf "${{ matrix.archive_name }}" -C "target/${{ matrix.target }}/release" "${{ matrix.asset_name }}"
-          fi
-
-          # Set the path for the upload step
+          tar -czvf "${{ matrix.archive_name }}" -C "target/${{ matrix.target }}/release" "${{ matrix.asset_name }}"
           echo "ASSET_PATH=${{ matrix.archive_name }}" >> $GITHUB_ENV
 
       - name: Create GitHub Release and Upload Assets
-        # This powerful action creates the release page and uploads our archives.
         uses: softprops/action-gh-release@v2
         with:
-          # Use the contents of the archive as the files to upload.
           files: ${{ env.ASSET_PATH }}
-          # Automatically generate the release notes from your commit history.
           generate_release_notes: true
