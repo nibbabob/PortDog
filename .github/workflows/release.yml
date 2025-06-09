@@ -9,11 +9,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # We still define the binary name here for use inside the job steps.
   BINARY_NAME: portdog
 
 jobs:
-  # This CI job remains unchanged and is good practice.
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -31,7 +29,6 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-  # This job handles the entire release process.
   release:
     name: Build & Release
     if: startsWith(github.ref, 'refs/tags/v')
@@ -42,19 +39,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            # --- FIX: Hardcode 'portdog' instead of using env context ---
             archive_name: portdog-${{ github.ref_name }}-linux-x86_64.tar.gz
             asset_name: portdog
 
           - os: macos-latest
             target: x86_64-apple-darwin
-            # --- FIX: Hardcode 'portdog' instead of using env context ---
             archive_name: portdog-${{ github.ref_name }}-macos-x86_64.tar.gz
             asset_name: portdog
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            # --- FIX: Hardcode 'portdog' instead of using env context ---
             archive_name: portdog-${{ github.ref_name }}-windows-x86_64.zip
             asset_name: portdog.exe
 
@@ -68,7 +62,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       
-      - name: Install dependencies for Linux (for cross-compilation if needed)
+      - name: Install dependencies for Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
@@ -79,11 +73,11 @@ jobs:
 
       - name: Prepare release archive (Windows)
         if: matrix.os == 'windows-latest'
-        # Use PowerShell's native compression tool for better reliability.
         shell: pwsh
         run: |
           Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.asset_name }}" -DestinationPath "${{ matrix.archive_name }}"
           echo "ASSET_PATH=${{ matrix.archive_name }}" >> $env:GITHUB_ENV
+          echo "BINARY_PATH=target/${{ matrix.target }}/release/${{ matrix.asset_name }}" >> $env:GITHUB_ENV
 
       - name: Prepare release archive (Linux/macOS)
         if: matrix.os != 'windows-latest'
@@ -91,9 +85,16 @@ jobs:
         run: |
           tar -czvf "${{ matrix.archive_name }}" -C "target/${{ matrix.target }}/release" "${{ matrix.asset_name }}"
           echo "ASSET_PATH=${{ matrix.archive_name }}" >> $GITHUB_ENV
+          echo "BINARY_PATH=target/${{ matrix.target }}/release/${{ matrix.asset_name }}" >> $GITHUB_ENV
 
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ASSET_PATH }}
+          # --- THIS IS THE FIX ---
+          # Provide a multi-line list of files to upload:
+          # 1. The compressed archive
+          # 2. The raw executable binary
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.BINARY_PATH }}
           generate_release_notes: true
